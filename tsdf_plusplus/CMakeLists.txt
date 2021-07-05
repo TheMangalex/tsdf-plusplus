@@ -4,6 +4,10 @@ project(tsdf_plusplus)
 find_package(catkin_simple REQUIRED)
 catkin_simple(ALL_DEPS_REQUIRED)
 
+find_package(Boost REQUIRED COMPONENTS system thread filesystem)
+
+set(CMAKE_CXX_FLAGS "-std=c++14")
+
 cs_add_library(${PROJECT_NAME}
   src/alignment/icp.cc
   src/core/object_volume.cc
@@ -14,6 +18,8 @@ cs_add_library(${PROJECT_NAME}
   src/mesh/mesh_integrator.cc
   src/visualizer/visualizer.cc
 )
+
+
 
 cs_install()
 cs_export()
