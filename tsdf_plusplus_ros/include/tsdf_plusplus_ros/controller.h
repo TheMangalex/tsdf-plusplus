@@ -17,6 +17,16 @@
 #include <voxblox/core/common.h>
 #include <voxblox/utils/timing.h>
 
+//including new scene_graph message
+#include <scene_graph_msgs/Observation.h>
+#include <scene_graph_msgs/Room.h>
+#include <scene_graph_msgs/Object.h>
+#include <scene_graph_msgs/Relation.h>
+#include <minkindr_conversions/kindr_tf.h>
+#include <minkindr_conversions/kindr_msg.h>
+#include <tf/LinearMath/Transform.h>
+#include <memory>
+
 class Controller {
  public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -156,6 +166,10 @@ class Controller {
 
   // Publishers.
   ros::Publisher mesh_pub_;
+
+  //observations msg
+  std::shared_ptr<scene_graph_msgs::Observation> observation_msg_;
+  ros::Publisher observation_pub_;
 };
 
 #endif  // TSDF_PLUSPLUS_ROS_CONTROLLER_H_

@@ -18,4 +18,5 @@
   <depend>voxblox_msgs</depend>
   <depend>voxblox_ros</depend>
   <depend>roscpp</depend>
+  <depend>scene_graph_msgs</depend>
 </package>

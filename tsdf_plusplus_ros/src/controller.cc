@@ -111,6 +111,10 @@ Controller::Controller(const ros::NodeHandle& nh,
 
   // Advertise publishers.
   mesh_pub_ = nh_private_.advertise<voxblox_msgs::Mesh>("mesh", 1, true);
+
+  //observations pub
+  std::cout << "new publisher" << std::endl;
+  observation_pub_ = nh_private_.advertise<scene_graph_msgs::Observation>("observations", 1, true);
 }
 
 Controller::~Controller() { vizualizer_thread_.join(); }
@@ -161,12 +165,39 @@ void Controller::segmentPointcloudCallback(
   if (frame_complete && current_frame_segments_.size() > 0u) {
     LOG(INFO) << "Integrating frame " << ++frame_number_ << " with timestamp "
               << std::fixed << last_segment_msg_time_.toSec();
+
+    std::cout << "clearing last message" << std::endl;
+    //TODO clear last observances here, save them during integration and publish before clearing the frame
+    observation_msg_ = std::make_shared<scene_graph_msgs::Observation>();
+    observation_msg_->header = segment_pcl_msg->header;
+    observation_msg_->header.frame_id = "world"; //TODO fix this later
+
+    //TODO get room informations somehow/room detection needed later 
+    //creating debug room
+    auto rooms = observation_msg_->rooms;
+    scene_graph_msgs::Room room;
+    room.room_id = 0;
+    geometry_msgs::Pose pose;
+    room.pose = pose;
+    room.width = 0.0;
+    room.height = 0.0;
+    rooms.push_back(room);
+
+    //TODO observe object relations, currently not done
+    std::cout << "integrating frame" << std::endl;
+
+
     integrateFrame();
 
     if (write_frames_to_file_) {
       // Project the object map to 2D segmentation images.
       visualizer_->triggerScreenshot(frame_number_);
     }
+
+
+    //publish observations
+    std::cout << "publish observation" << std::endl;
+    observation_pub_.publish(*observation_msg_);
 
     clearFrame();
   }
@@ -324,8 +355,34 @@ void Controller::integrateSemanticClasses() {
         map_->getObjectVolumePtrById(segment->object_id_);
     if (object_volume) {
       object_volume->setSemanticClass(segment->semantic_class_);
+
+      std::cout << "fitting object into message " << std::endl;
+      //TODO save observed objects here
+      scene_graph_msgs::Object obj;
+      obj.object_id = segment->object_id_;
+      obj.semantic_class = segment->semantic_class_;
+
+      //Casting because of eigen error
+      tf::poseKindrToMsg(object_volume->getPose().cast<double>(), &obj.pose);
+      //obj.pose = trans;
+      obj.width = 0; //TODO currently unknown
+      obj.height = 0;
+      observation_msg_->objects.push_back(obj);
+
+
+      //fake room relation, TODO this has to be done different later; maybe also add rooms to objects in tsdf++
+      scene_graph_msgs::Relation rel;
+      rel.object_ids.push_back(obj.object_id);
+      rel.room_ids.push_back(0); //TODO change this later with inclusion of rooms
+      rel.type = "object_in_room";
+      observation_msg_->relations.push_back(rel);
+
     }
+    
+    
   }
+
+  
 }
 
 void Controller::trackObjects() {

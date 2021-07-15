@@ -1,0 +1,7 @@
+<launch>
+  <node name="mask_rcnn" pkg="mask_rcnn_ros" type="mask_rcnn_node.py" output="log">
+    <param name="~input" value="/realsense_d435_back/color/image_raw" />
+    <param name="~visualization" value="true" />
+  </node>
+
+</launch>
