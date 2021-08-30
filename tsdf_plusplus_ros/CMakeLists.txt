@@ -9,6 +9,7 @@ find_package(Boost REQUIRED COMPONENTS system thread filesystem)
 set(CMAKE_CXX_FLAGS "-std=c++14")
 cs_add_library(${PROJECT_NAME}_library
   src/controller.cc
+  src/room_detector.cc
 )
 target_link_libraries(${PROJECT_NAME}_library ${catkin_LIBRARIES} )
 
