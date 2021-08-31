@@ -110,7 +110,7 @@ Controller::Controller(const ros::NodeHandle& nh,
       "remove_objects", &Controller::removeObjectsCallback, this);
 
   // Advertise publishers.
-  mesh_pub_ = nh_private_.advertise<voxblox_msgs::Mesh>("mesh", 1, true);
+  mesh_pub_ = nh_private_.advertise<voxblox_msgs::Mesh>("semantic_mesh", 1, true);
 
   //observations pub
   std::cout << "new publisher" << std::endl;

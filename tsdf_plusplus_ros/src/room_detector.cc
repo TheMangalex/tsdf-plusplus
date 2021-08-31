@@ -1,10 +1,25 @@
 #include "tsdf_plusplus_ros/room_detector.h"
 
 RoomDetector::RoomDetector(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private, std::shared_ptr<Controller> controller_ptr) 
-    : nh_(nh), nh_private_(nh_private), controller_ptr_(controller_ptr), first_pos_(false), first_angle_(0.0f)
+    : nh_(nh), nh_private_(nh_private), controller_ptr_(controller_ptr), first_pos_(false), first_angle_(0.0f), new_layer_(false)
     {
         std::string pcl_topic = "/scan_cloud_filtered";
         pcl_sub_ = nh_.subscribe(pcl_topic, 1000, &RoomDetector::pointcloudCallback, this);
+
+        std::string tsdf_map_topic = "voxblox_node/tsdf_map_out";
+        tsdf_sub_ = nh_.subscribe(tsdf_map_topic, 1, &RoomDetector::tsdf_layer_callback, this);
+        slice_pub_ =
+      nh_private_.advertise<visualization_msgs::MarkerArray>("sdf_slice", 1);
+    
+
+
+
+    FloatingPoint voxel_size = 0.1;
+    size_t voxels_per_side = 16;
+    //TODO maybe do this every callback and only get updates this way??
+    voxblox::Layer<voxblox::TsdfVoxel> layer(voxel_size, voxels_per_side);
+    tsdf_map_ptr_ = std::make_shared<voxblox::TsdfMap>(layer);
+      
 }
 
 
@@ -35,7 +50,7 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
     pcl::moveFromROSMsg(*cloud_msg, pointcloud_pcl);
 
 
-    float histogram_height_cm = 5.0f;
+    float histogram_height_cm = 10.0f;
     for(size_t i = 0u; i < pointcloud_pcl.points.size(); i++) {
         auto p = pointcloud_pcl.points[i];
         voxblox::Point point(p.x, p.y, p.z);
@@ -45,20 +60,12 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
         histogram_[z_pos] += 1;
     }
 
-    /*float diff = angles[0] - first_angle_;
-    while (diff < 0.0f) {
-        diff += 2 * 3.14159;
-    }*/
-    /*if (diff > 3.14159) {
-        half_step_ = true;
-    }*/
-    //if (diff < 3.14159 && half_step_) {
     if (last_angle_ > angles[0]) { 
         //rotation should be done, as angle is smaller than pi again
         first_pos_ = false;
         //half_step_ = false;
 
-    std::map<int, int> possible_heights;
+        std::map<int, int> possible_heights;
         //print histogram for now
         std::cout << "printing histogram" << std::endl;
         for (auto hist : histogram_) {
@@ -105,11 +112,44 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
         //if fits, update it
         //if not, create new
         //TODO check for invalid ceiling
+
+        //this can not be multithreaded, as no mutex exists
+        if(!new_layer_) {
+            std::cout << "error, no new tsdf layer available" << std::endl;
+        } else {
+        //auto tsdf_layer_ptr = tsdf_server_->getTsdfMapPtr()->getTsdfLayerPtr();
+        /*if(!tsdf_layer_ptr) {
+            
+        }*/
+        
+        //getting submap slice like cblox
+        auto slice_layer_ptr = getTsdfSlice(tsdf_map_ptr_->getTsdfLayerPtr(), ceiling - 0.3f); //get slice below ceiling
+        visualizeSlice(slice_layer_ptr);
+        }
     }
 }
 
+void RoomDetector::tsdf_layer_callback(const voxblox_msgs::Layer::Ptr& layer_msg) {
+
+  
+     
+    std::cout << "layer callback" << std::endl;
+    FloatingPoint voxel_size = 0.05;
+    size_t voxels_per_side = 16;
+
+    //voxblox::Layer<voxblox::TsdfVoxel> tsdf_layer_ = std::make_shared(voxel_size, voxels_per_side);
+    bool success = voxblox::deserializeMsgToLayer<voxblox::TsdfVoxel>(*layer_msg, tsdf_map_ptr_->getTsdfLayerPtr());
+    if(!success) {
+        std::cout << "failed to deserialize layer" << std::endl;
+        new_layer_ = false;
+        return;   
+    }
+    new_layer_ = true;
+    return;
+}
 
 
+//from controller
 bool RoomDetector::lookupTransformTF(const std::string& from_frame,
                                    const std::string& to_frame,
                                    const ros::Time& timestamp,
@@ -138,4 +178,122 @@ bool RoomDetector::lookupTransformTF(const std::string& from_frame,
 
   tf::transformTFToKindr(tf_transform, transform);
   return true;
+}
+
+
+//adapted from cblox
+//voxel_size is a bit downsampling, maybe just change tsdf voxel size?
+//TODO
+std::shared_ptr<voxblox::Layer<voxblox::TsdfVoxel>> RoomDetector::getTsdfSlice(voxblox::Layer<voxblox::TsdfVoxel>* tsdf_layer_ptr, float slice_height) {
+    FloatingPoint voxel_size = 0.1;
+    size_t voxels_per_side = 16;
+    std::shared_ptr<voxblox::Layer<voxblox::TsdfVoxel>> slice_layer = std::make_shared<voxblox::Layer<voxblox::TsdfVoxel>>(voxel_size, voxels_per_side);
+
+//from cblox
+    voxblox::BlockIndexList block_list;
+  tsdf_layer_ptr->getAllAllocatedBlocks(&block_list);
+
+  int block_num = 0;
+
+  for (const voxblox::BlockIndex& block_id : block_list) {
+
+    if (!tsdf_layer_ptr->hasBlock(block_id)) continue;
+
+    voxblox::Block<voxblox::TsdfVoxel>::Ptr block =
+        tsdf_layer_ptr->getBlockPtrByIndex(block_id);
+
+    for (size_t voxel_id = 0; voxel_id < block->num_voxels(); voxel_id++) {
+
+      const voxblox::TsdfVoxel& voxel = block->getVoxelByLinearIndex(voxel_id);
+
+      voxblox::Point position =
+          block->computeCoordinatesFromLinearIndex(voxel_id);
+
+
+      if (voxel.weight < 1e-6) {
+        continue;
+      }
+
+      if(std::abs(position.z() - slice_height) > voxel_size/2.0) {
+          continue; //skip if not on slice place
+      }
+
+
+      auto voxel_ptr = slice_layer->getVoxelPtrByCoordinates(position);
+      if(!voxel_ptr) {
+
+          slice_layer->allocateNewBlockByCoordinates(position);
+          voxel_ptr = slice_layer->getVoxelPtrByCoordinates(position);
+          if(!voxel_ptr) {
+              std::cout << "error, couldn't allocate voxel in layer" << std::endl;
+              continue;
+          }
+      }
+      voxel_ptr->distance = (voxel_ptr->weight * voxel_ptr->distance  + voxel.distance) / (voxel_ptr->weight + 1);
+      voxel_ptr->weight += 1;
+    }
+  }
+  return slice_layer;
+
+}
+
+//from cblox adapted again
+void RoomDetector::visualizeSlice(std::shared_ptr<voxblox::Layer<voxblox::TsdfVoxel>> slice_layer_ptr) {
+   visualization_msgs::MarkerArray marker_array;
+  visualization_msgs::Marker vertex_marker;
+  vertex_marker.header.frame_id = "world";
+  vertex_marker.ns = "slice";
+  vertex_marker.type = visualization_msgs::Marker::CUBE_LIST;
+  vertex_marker.pose.orientation.w = 1.0;
+  vertex_marker.scale.x =
+      0.05;
+  vertex_marker.scale.y = vertex_marker.scale.x;
+  vertex_marker.scale.z = vertex_marker.scale.x;
+  geometry_msgs::Point point_msg;
+  std_msgs::ColorRGBA color_msg;
+  color_msg.r = 0.0;
+  color_msg.g = 0.0;
+  color_msg.b = 0.0;
+  color_msg.a = 1.0;
+   
+   
+   
+    voxblox::BlockIndexList block_list;
+  slice_layer_ptr->getAllAllocatedBlocks(&block_list);
+  int block_num = 0;
+  for (const voxblox::BlockIndex& block_id : block_list) {
+    if (!slice_layer_ptr->hasBlock(block_id)) continue;
+    voxblox::Block<voxblox::TsdfVoxel>::Ptr block =
+        slice_layer_ptr->getBlockPtrByIndex(block_id);
+    for (size_t voxel_id = 0; voxel_id < block->num_voxels(); voxel_id++) {
+      const voxblox::TsdfVoxel& voxel = block->getVoxelByLinearIndex(voxel_id);
+      voxblox::Point position =
+          block->computeCoordinatesFromLinearIndex(voxel_id);
+
+      if (voxel.weight < 1e-6) {
+        continue;
+      }
+
+      color_msg.r = 0.0;
+      color_msg.g = 0.0;
+      if (voxel.weight >= 1e-6) {
+        color_msg.r = std::max(
+            std::min((3 - voxel.distance) / 2.0 / 3, 1.0), 0.0);
+        color_msg.g = std::max(
+            std::min((3 + voxel.distance) / 2.0 / 3, 1.0), 0.0);
+      }
+
+        vertex_marker.id =
+            block_num +
+            voxel_id * std::pow(10, std::round(std::log10(block_list.size())));
+        tf::pointEigenToMsg(position.cast<double>(), point_msg);
+
+        vertex_marker.points.push_back(point_msg);
+        vertex_marker.colors.push_back(color_msg);
+    }
+    block_num++;
+  }
+
+  marker_array.markers.push_back(vertex_marker);
+  slice_pub_.publish(marker_array);
 }

@@ -19,5 +19,33 @@
     <param name="visualizer/enable" value="$(arg visualize)" />
     <param name="meshing/update_mesh_every_n_sec" value="0.0" unless="$(arg visualize)" />
 
+
+    <!-- don't mesh the tsdf layer -->
+    <param name="update_mesh_every_n_sec" value="1.0"/>
+
+  </node>
+
+
+  <!-- launch voxblox for tsdf-->
+  <node name="voxblox_node" pkg="voxblox_ros" type="tsdf_server" output="screen" args="-alsologtostderr" clear_params="true">
+    <remap from="pointcloud" to="/scan_cloud_filtered" />
+    <param name="publish_map_every_n_sec" value="3.0"/>
+    <param name="publish_tsdf_map" value="true"/>
+    <param name="tsdf_voxel_size" value="0.1" />
+    <param name="tsdf_voxels_per_side" value="16" />
+    <param name="voxel_carving_enabled" value="true" />
+    <param name="color_mode" value="normals"/>
+    <param name="use_tf_transforms" value="true" />
+    <param name="enable_icp" value="true" />
+    <param name="icp_iterations" value="10" />
+    <param name="verbose" value="false" />
+    <param name="update_mesh_every_n_sec" value="0.2" />
+    <param name="max_ray_length_m" value="25.0" />
+    <param name="min_time_between_msgs_sec" value="0.2" />
+    <param name="slice_level" value="1.0" />
+    <param name="method" value="fast" />
+    <param name="use_const_weight" value="true" />
+    <param name="mesh_filename" value="$(find voxblox_ros)/mesh_results/$(anon kitti).ply" />
+    
   </node>
 </launch>
