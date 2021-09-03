@@ -346,6 +346,9 @@ void Controller::integrateFrame() {
 }
 
 void Controller::integrateSemanticClasses() {
+  //save observed rooms
+  std::vector<uint> room_ids;
+
   for (const auto& pair : object_merged_segments_) {
     Segment* segment = pair.second;
     if (segment->semantic_class_ == BackgroundClass) {
@@ -357,6 +360,7 @@ void Controller::integrateSemanticClasses() {
       object_volume->setSemanticClass(segment->semantic_class_);
 
       std::cout << "fitting object into message " << std::endl;
+
       //TODO save observed objects here
       scene_graph_msgs::Object obj;
       obj.object_id = segment->object_id_;
@@ -370,17 +374,49 @@ void Controller::integrateSemanticClasses() {
       observation_msg_->objects.push_back(obj);
 
 
-      //fake room relation, TODO this has to be done different later; maybe also add rooms to objects in tsdf++
+      //get room fpor object by its center point
+      auto point = object_volume->getPose().getPosition();
+      uint room_id = 0;
+
+      rooms_and_floors_->mut.lock();
+      auto floors = rooms_and_floors_->floors;
+      for(auto floor : *floors) {
+        if(floor->inFloor(point[2])) {
+          room_id = floor->getRoomId(point);
+        }
+      }
+      rooms_and_floors_->mut.unlock();
+
       scene_graph_msgs::Relation rel;
       rel.object_ids.push_back(obj.object_id);
-      rel.room_ids.push_back(0); //TODO change this later with inclusion of rooms
+      rel.room_ids.push_back(room_id); //TODO change this later with inclusion of rooms
       rel.type = "object_in_room";
       observation_msg_->relations.push_back(rel);
 
+      room_ids.push_back(room_id);
+    }
+  }
+
+    //now also publish observed rooms
+    for(auto room_id : room_ids) {
+      if(room_id == 0)
+        continue;
+      scene_graph_msgs::Room room;
+      //TODO, get Rooms as own class/struct instead of bool, add pose by calculating center of room by all voxels.
+      room.room_id = room_id;
+      //pose, width, height, todo (maybe leavee out width and height?)
+      observation_msg_->rooms.push_back(room);
+      //relation
+      scene_graph_msgs::Relation rel;
+      rel.room_ids.push_back(room_id);
+      rel.room_ids.push_back(0); //TODO for now only adding rooms to world (0), maybe later do floors or sth in between.
+      rel.type = "room_in_room";
+      observation_msg_->relations.push_back(rel);
     }
     
     
-  }
+    
+  
 
   
 }
@@ -618,4 +654,9 @@ bool Controller::removeObjectsCallback(std_srvs::Empty::Request& /*request*/,
     // Project the object map to 2D segmentation images.
     visualizer_->triggerScreenshot(frame_number_);
   }
+}
+
+
+void Controller::addFloorsAndRoomIds(std::shared_ptr<RoomsAndFloors> rooms_and_floors) {
+  rooms_and_floors_ = rooms_and_floors;
 }

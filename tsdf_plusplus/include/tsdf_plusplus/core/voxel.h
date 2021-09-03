@@ -12,4 +12,11 @@ struct MOVoxel {
   Object inactive_object;
 };
 
+
+//newly added RoomVoxel
+struct RoomVoxel {
+  bool wall;
+  uint room_id;
+};
+
 #endif  // TSDF_PLUSPLUS_CORE_VOXEL_H_

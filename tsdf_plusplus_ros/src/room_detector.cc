@@ -12,13 +12,21 @@ RoomDetector::RoomDetector(const ros::NodeHandle& nh, const ros::NodeHandle& nh_
       nh_private_.advertise<visualization_msgs::MarkerArray>("sdf_slice", 1);
     
 
-
+    
 
     FloatingPoint voxel_size = 0.1;
     size_t voxels_per_side = 16;
+
     //TODO maybe do this every callback and only get updates this way??
     voxblox::Layer<voxblox::TsdfVoxel> layer(voxel_size, voxels_per_side);
     tsdf_map_ptr_ = std::make_shared<voxblox::TsdfMap>(layer);
+    
+    rooms_and_floors_ = std::make_shared<RoomsAndFloors>();
+    rooms_and_floors_->floors = std::make_shared<std::vector<Floor::Ptr>>();
+    rooms_and_floors_->room_ids = std::make_shared<std::map<uint, bool>>();
+
+    //pass rooms_and_floors_struct
+    controller_ptr_->addFloorsAndRoomIds(rooms_and_floors_);
       
 }
 
@@ -94,18 +102,18 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
             }
         }
 
-        float floor, ceiling;
+        double floor_h, ceiling_h;
         if (res1 < res2) {
-            floor = res1;
-            ceiling = res2;
+            floor_h = res1;
+            ceiling_h = res2;
         } else {
-            floor = res2;
-            ceiling = res1;
+            floor_h = res2;
+            ceiling_h = res1;
         }
-        floor *=  histogram_height_cm / 100.0;
-        ceiling *= histogram_height_cm / 100.0;
+        floor_h *=  histogram_height_cm / 100.0;
+        ceiling_h *= histogram_height_cm / 100.0;
 
-        std::cout << "floor: " << std::to_string(floor) << ", ceiling: " << std::to_string(ceiling) << std::endl;
+        std::cout << "floor: " << std::to_string(floor_h) << ", ceiling: " << std::to_string(ceiling_h) << std::endl;
 
 
         //TODO now check if this fits to an existing building floor, or create a new one
@@ -123,19 +131,45 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
         }*/
         
         //getting submap slice like cblox
-        auto slice_layer_ptr = getTsdfSlice(tsdf_map_ptr_->getTsdfLayerPtr(), ceiling - 0.3f); //get slice below ceiling
+        auto slice_layer_ptr = getTsdfSlice(tsdf_map_ptr_->getTsdfLayerPtr(), ceiling_h - 0.3f); //get slice below ceiling
         visualizeSlice(slice_layer_ptr);
+        
+        int count = 0;
+        rooms_and_floors_->mut.lock();
+        auto floors = rooms_and_floors_->floors;
+        for (auto floor : *floors) {
+            if(floor->inFloor(ceiling_h - 0.3f)) { //if slice in floor, update
+                floor->updateWithSlice(slice_layer_ptr);
+                count++;
+            }
+
+        }
+        if(count == 0) {
+            //TODO try to use floor value also to recognize wrongly created floors
+            if(ceiling_h - floor_h < 1.0) {
+                std::cout << "to low height to create new floor" << std::endl;
+            } else {
+
+            Floor::Ptr floor = std::make_shared<Floor>(floor_h, ceiling_h, rooms_and_floors_);
+            floors->push_back(floor);
+            }
+        }
+        rooms_and_floors_->mut.unlock();
+        //TODO add floors_ and room_ids_ to class vars and also add this to object detection
+        //test with preloaded rooms
+
         }
     }
 }
 
 void RoomDetector::tsdf_layer_callback(const voxblox_msgs::Layer::Ptr& layer_msg) {
-
+    
   
      
     std::cout << "layer callback" << std::endl;
     FloatingPoint voxel_size = 0.05;
     size_t voxels_per_side = 16;
+    
 
     //voxblox::Layer<voxblox::TsdfVoxel> tsdf_layer_ = std::make_shared(voxel_size, voxels_per_side);
     bool success = voxblox::deserializeMsgToLayer<voxblox::TsdfVoxel>(*layer_msg, tsdf_map_ptr_->getTsdfLayerPtr());

@@ -13,6 +13,8 @@
 
 #include <voxblox_ros/tsdf_server.h>
 
+#include <tsdf_plusplus/core/floor.h>
+
 
 class RoomDetector {
  public:
@@ -44,6 +46,9 @@ class RoomDetector {
   ros::Subscriber tsdf_sub_;
   std::shared_ptr<voxblox::TsdfMap> tsdf_map_ptr_;
   bool new_layer_;
+
+
+  std::shared_ptr<RoomsAndFloors> rooms_and_floors_;
   
 
   std::shared_ptr<voxblox::Layer<voxblox::TsdfVoxel>> getTsdfSlice(voxblox::Layer<voxblox::TsdfVoxel>* tsdf_layer_ptr, float slice_height);

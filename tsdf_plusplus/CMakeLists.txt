@@ -17,6 +17,7 @@ cs_add_library(${PROJECT_NAME}
   src/mesh/color_map.cc
   src/mesh/mesh_integrator.cc
   src/visualizer/visualizer.cc
+  src/core/floor.cc
 )
 
 

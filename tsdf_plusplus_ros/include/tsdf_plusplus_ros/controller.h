@@ -26,6 +26,7 @@
 #include <minkindr_conversions/kindr_msg.h>
 #include <tf/LinearMath/Transform.h>
 #include <memory>
+#include <tsdf_plusplus/core/floor.h>
 
 class Controller {
  public:
@@ -42,6 +43,9 @@ class Controller {
   virtual ~Controller();
 
   void getConfigFromRosParam(const ros::NodeHandle& nh_private);
+
+
+  void addFloorsAndRoomIds(std::shared_ptr<RoomsAndFloors> rooms_and_floors);
 
  protected:
   void processSegmentPointcloud(
@@ -170,6 +174,11 @@ class Controller {
   //observations msg
   std::shared_ptr<scene_graph_msgs::Observation> observation_msg_;
   ros::Publisher observation_pub_;
+
+
+  //rooms and floors
+  
+  std::shared_ptr<RoomsAndFloors> rooms_and_floors_;
 };
 
 #endif  // TSDF_PLUSPLUS_ROS_CONTROLLER_H_

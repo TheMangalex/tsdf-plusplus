@@ -1,0 +1,96 @@
+#include "tsdf_plusplus/core/floor.h"
+
+Floor::Floor(double floor_height, double ceiling_height, std::shared_ptr<RoomsAndFloors> rooms_and_floors) 
+  : floor_height_(floor_height), ceiling_height_(ceiling_height), floor_weight_(1.0), ceiling_weight_(1.0), rooms_and_floors_(rooms_and_floors)
+  {
+      //TODO adapt parameters for layer
+      room_layer_ = std::make_shared<voxblox::Layer<RoomVoxel>>(0.1, 16u);
+}
+
+void Floor::updateWithSlice(voxblox::Layer<voxblox::TsdfVoxel>::Ptr tsdf_layer) {
+    floor_mutex_.lock();
+    //TODO
+
+    //TODO, get Rooms as own class/struct instead of bool, add pose by calculating center of room by all voxels.
+}
+
+void Floor::updateHeights(double floor_height, double ceiling_height) {
+    floor_mutex_.lock();
+    floor_height_ = (floor_height_ * floor_weight_ + floor_height) / (floor_weight_ + 1.0);
+    floor_weight_++;
+
+    ceiling_height_ = (ceiling_height_ * ceiling_weight_ + ceiling_height) / (ceiling_weight_ + 1.0);
+    ceiling_weight_++;
+    std::cout << "Floor: " << floor_height_ << " Ceiling: " << ceiling_height_ << std::endl;
+}
+
+
+void Floor::setLayer(voxblox::Layer<RoomVoxel>::Ptr override_layer) {
+    floor_mutex_.lock();
+    room_layer_ = override_layer;
+}
+
+bool Floor::inFloor(double height) {
+    floor_mutex_.lock();
+    return (height > floor_height_ && height < ceiling_height_);
+}
+
+uint Floor::getRoomId(voxblox::Point point) {
+    floor_mutex_.lock();
+    uint room_id = 0;
+    point[2] = mapping_height_; //working only on this z height
+    auto voxel = room_layer_->getVoxelPtrByCoordinates(point);
+    bool check_neighbours = false;
+    //voxel not existing, check neighborhood
+    if(!voxel) {
+        check_neighbours = true;
+    } else {
+        room_id = voxel->room_id;
+        if(room_id == 0) {
+            check_neighbours = true;
+        }
+    }
+
+    if(check_neighbours) {
+        return checkNeighbours(point, 1);
+    }
+
+    return room_id;
+}
+
+uint Floor::checkNeighbours(voxblox::Point point, int neighbourhood_size) {
+    
+    std::map<uint, int> room_ids;
+    point[2] = 0;
+    for (int x = -neighbourhood_size; x <= neighbourhood_size; x++) {
+        for(int y = -neighbourhood_size; y <= neighbourhood_size; y++) {
+            voxblox::Point p(point[0] + x, point[1] + y, 0.0);
+            auto voxel = room_layer_->getVoxelPtrByCoordinates(point);
+            if(!voxel)
+                continue;
+            if(room_ids.find(voxel->room_id) == room_ids.end()) {
+                room_ids[voxel->room_id] = 1;
+            } else {
+                room_ids[voxel->room_id] += 1;
+            }
+        }
+    }
+
+    if(room_ids.size() == 0) {
+        return 0;
+    }
+
+    uint room_id = 0;
+    int weight = 0;
+    for(auto entry : room_ids) {
+        if(entry.first == 0) {
+            continue; //ignoring 0 label
+        }
+        if(entry.second > weight) {
+            weight = entry.second;
+            room_id = entry.first;
+        }
+
+    }
+    return room_id;
+}
