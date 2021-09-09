@@ -16,7 +16,7 @@ struct MOVoxel {
 //newly added RoomVoxel
 struct RoomVoxel {
   bool wall;
-  uint room_id;
+  uint room_id = 0;
 };
 
 #endif  // TSDF_PLUSPLUS_CORE_VOXEL_H_

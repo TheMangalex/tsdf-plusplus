@@ -1,7 +1,7 @@
 #include "tsdf_plusplus_ros/room_detector.h"
 
 RoomDetector::RoomDetector(const ros::NodeHandle& nh, const ros::NodeHandle& nh_private, std::shared_ptr<Controller> controller_ptr) 
-    : nh_(nh), nh_private_(nh_private), controller_ptr_(controller_ptr), first_pos_(false), first_angle_(0.0f), new_layer_(false)
+    : nh_(nh), nh_private_(nh_private), controller_ptr_(controller_ptr), first_pos_(false), first_angle_(0.0f), new_layer_(false), publish_floor_(false)
     {
         std::string pcl_topic = "/scan_cloud_filtered";
         pcl_sub_ = nh_.subscribe(pcl_topic, 1000, &RoomDetector::pointcloudCallback, this);
@@ -10,6 +10,8 @@ RoomDetector::RoomDetector(const ros::NodeHandle& nh, const ros::NodeHandle& nh_
         tsdf_sub_ = nh_.subscribe(tsdf_map_topic, 1, &RoomDetector::tsdf_layer_callback, this);
         slice_pub_ =
       nh_private_.advertise<visualization_msgs::MarkerArray>("sdf_slice", 1);
+      floor_pub_ =
+      nh_private_.advertise<visualization_msgs::MarkerArray>("floor", 1);
     
 
     
@@ -27,6 +29,11 @@ RoomDetector::RoomDetector(const ros::NodeHandle& nh, const ros::NodeHandle& nh_
 
     //pass rooms_and_floors_struct
     controller_ptr_->addFloorsAndRoomIds(rooms_and_floors_);
+
+
+
+    //debug pub 
+    publish_floor_ = true;
       
 }
 
@@ -135,11 +142,17 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
         visualizeSlice(slice_layer_ptr);
         
         int count = 0;
+        std::cout << "detector lock" << std::endl;
         rooms_and_floors_->mut.lock();
         auto floors = rooms_and_floors_->floors;
         for (auto floor : *floors) {
             if(floor->inFloor(ceiling_h - 0.3f)) { //if slice in floor, update
                 floor->updateWithSlice(slice_layer_ptr);
+
+                if(publish_floor_) {
+                    std::cout << "visualize floor" << std::endl;
+                    visualizeFloor(floor);
+                }
                 count++;
             }
 
@@ -152,9 +165,15 @@ void RoomDetector::pointcloudCallback(const sensor_msgs::PointCloud2::Ptr& cloud
 
             Floor::Ptr floor = std::make_shared<Floor>(floor_h, ceiling_h, rooms_and_floors_);
             floors->push_back(floor);
+
+            if(publish_floor_) {
+                std::cout << "visualize floor" << std::endl;
+                visualizeFloor(floor);
+            }
             }
         }
         rooms_and_floors_->mut.unlock();
+        std::cout << "detector unlock" << std::endl;
         //TODO add floors_ and room_ids_ to class vars and also add this to object detection
         //test with preloaded rooms
 
@@ -179,6 +198,7 @@ void RoomDetector::tsdf_layer_callback(const voxblox_msgs::Layer::Ptr& layer_msg
         return;   
     }
     new_layer_ = true;
+    std::cout << "layer callback end" << std::endl;
     return;
 }
 
@@ -330,4 +350,69 @@ void RoomDetector::visualizeSlice(std::shared_ptr<voxblox::Layer<voxblox::TsdfVo
 
   marker_array.markers.push_back(vertex_marker);
   slice_pub_.publish(marker_array);
+}
+
+
+//NOT THREAD SAFE
+void RoomDetector::visualizeFloor(Floor::Ptr floor) {
+    auto layer = floor->getLayer();
+
+//again similar to cblox
+  visualization_msgs::MarkerArray marker_array;
+  visualization_msgs::Marker vertex_marker;
+  vertex_marker.header.frame_id = "world";
+  vertex_marker.ns = "slice";
+  vertex_marker.type = visualization_msgs::Marker::CUBE_LIST;
+  vertex_marker.pose.orientation.w = 1.0;
+  vertex_marker.scale.x =
+      0.05;
+  vertex_marker.scale.y = vertex_marker.scale.x;
+  vertex_marker.scale.z = vertex_marker.scale.x;
+  geometry_msgs::Point point_msg;
+  std_msgs::ColorRGBA color_msg;
+  color_msg.r = 0.0;
+  color_msg.g = 0.0;
+  color_msg.b = 0.0;
+  color_msg.a = 1.0;
+
+  voxblox::BlockIndexList block_list;
+  layer->getAllAllocatedBlocks(&block_list);
+  int block_num = 0;
+  for (const voxblox::BlockIndex& block_id : block_list) {
+    if (!layer->hasBlock(block_id)) continue;
+    voxblox::Block<RoomVoxel>::Ptr block =
+        layer->getBlockPtrByIndex(block_id);
+    for (size_t voxel_id = 0; voxel_id < block->num_voxels(); voxel_id++) {
+      const RoomVoxel& voxel = block->getVoxelByLinearIndex(voxel_id);
+      voxblox::Point position =
+          block->computeCoordinatesFromLinearIndex(voxel_id);
+
+      if (voxel.room_id == 0) {
+        continue;
+      }
+      if(voxel.wall) {
+          color_msg.r = 1.0;
+          color_msg.g = 1.0;
+          color_msg.b = 1.0;
+      }else {
+        voxblox::Color c = voxblox::rainbowColorMap(double(voxel.room_id) / 10.0);
+        color_msg.r = c.r / 255.0;
+        color_msg.g = c.g / 255.0;
+        color_msg.b = c.b / 255.0;
+      }
+
+        vertex_marker.id =
+            block_num +
+            voxel_id * std::pow(10, std::round(std::log10(block_list.size())));
+        tf::pointEigenToMsg(position.cast<double>(), point_msg);
+
+        vertex_marker.points.push_back(point_msg);
+        vertex_marker.colors.push_back(color_msg);
+    }
+    block_num++;
+  }
+
+  marker_array.markers.push_back(vertex_marker);
+  floor_pub_.publish(marker_array);
+
 }

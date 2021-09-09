@@ -5,10 +5,54 @@ Floor::Floor(double floor_height, double ceiling_height, std::shared_ptr<RoomsAn
   {
       //TODO adapt parameters for layer
       room_layer_ = std::make_shared<voxblox::Layer<RoomVoxel>>(0.1, 16u);
+
+
+      //loading debug room layout, must be removed later
+      std::cout << "creating debug floor" << std::endl;
+      std::vector<float> s_x = {00.00, 03.66, 07.32, 09.15, 00.00, 00.00, 03.66, 07.32, 00.00, 00.00, 03.66, 07.32, 00.00, 00.00, 03.66, 07.32};
+      std::vector<float> e_x = {03.66, 07.32, 09.15, 14.64, 09.15, 03.66, 07.32, 09.15, 09.15, 03.66, 07.32, 09.15, 09.15, 03.66, 07.32, 09.15};
+      std::vector<float> s_y = {00.00, 00.00, 00.00, 00.00, 03.66, 05.49, 05.49, 05.49, 09.15, 10.98, 10.98, 10.98, 14.64, 16.47, 16.47, 16.47};
+      std::vector<float> e_y = {03.66, 03.66, 03.66, 20.13, 05.49, 09.15, 09.15, 09.15, 10.98, 14.64, 14.64, 14.64, 16.47, 20.13, 20.13, 20.13};
+      auto z = mapping_height_;
+      float x_offset = 1.8;
+      float y_offset = -14.4;
+      for (int s = 0; s < s_x.size(); s++) {
+          //get free id and allocate it
+          uint id = 1;
+
+          //not completely thread safe, as room ids are accessed, but room detector currently logs it
+          std::cout << "searching free id" << std::endl;
+          while(rooms_and_floors_->room_ids->find(id) != rooms_and_floors_->room_ids->end()) {
+              id++;
+          }
+          std::cout << "found id" << std::endl;
+          (*(rooms_and_floors_->room_ids))[id] = true;
+
+          //map rooms in layer
+          for(float x = s_x[s]; x <= e_x[s]; x+=0.1) {
+              for(float y = s_y[s]; y <= e_y[s]; y+=0.1) {
+                  voxblox::Point position(x_offset + x, y_offset + y, z);
+                  auto voxel = room_layer_->getVoxelPtrByCoordinates(position);
+                  if(!voxel) {
+                      room_layer_->allocateNewBlockByCoordinates(position);
+                      voxel = room_layer_->getVoxelPtrByCoordinates(position);
+                  }
+
+                  voxel->wall = (x == s_x[s] || x == e_x[s] || y == s_y[s] || y == e_y[s]);
+                  voxel->room_id = id;
+              }
+          }
+          std::cout << "finished room" << std::endl;
+      }
+}
+
+voxblox::Layer<RoomVoxel>::Ptr Floor::getLayer() {
+    return room_layer_;
 }
 
 void Floor::updateWithSlice(voxblox::Layer<voxblox::TsdfVoxel>::Ptr tsdf_layer) {
     floor_mutex_.lock();
+    floor_mutex_.unlock();
     //TODO
 
     //TODO, get Rooms as own class/struct instead of bool, add pose by calculating center of room by all voxels.
@@ -22,17 +66,21 @@ void Floor::updateHeights(double floor_height, double ceiling_height) {
     ceiling_height_ = (ceiling_height_ * ceiling_weight_ + ceiling_height) / (ceiling_weight_ + 1.0);
     ceiling_weight_++;
     std::cout << "Floor: " << floor_height_ << " Ceiling: " << ceiling_height_ << std::endl;
+    floor_mutex_.unlock();
 }
 
 
 void Floor::setLayer(voxblox::Layer<RoomVoxel>::Ptr override_layer) {
     floor_mutex_.lock();
     room_layer_ = override_layer;
+    floor_mutex_.unlock();
 }
 
 bool Floor::inFloor(double height) {
     floor_mutex_.lock();
-    return (height > floor_height_ && height < ceiling_height_);
+    auto res = (height > floor_height_ && height < ceiling_height_);
+    floor_mutex_.unlock();
+    return res;
 }
 
 uint Floor::getRoomId(voxblox::Point point) {
@@ -52,9 +100,11 @@ uint Floor::getRoomId(voxblox::Point point) {
     }
 
     if(check_neighbours) {
-        return checkNeighbours(point, 1);
+        auto res = checkNeighbours(point, 1);
+        floor_mutex_.unlock();
+        return res;
     }
-
+    floor_mutex_.unlock();
     return room_id;
 }
 

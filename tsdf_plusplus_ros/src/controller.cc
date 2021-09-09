@@ -160,8 +160,10 @@ void Controller::getConfigFromRosParam(const ros::NodeHandle& nh_private) {
 
 void Controller::segmentPointcloudCallback(
     const sensor_msgs::PointCloud2::Ptr& segment_pcl_msg) {
+      std::cout << "pcl callback" << std::endl;
   bool frame_complete = segment_pcl_msg->header.stamp - last_segment_msg_time_ >
                         min_time_between_msgs_;
+  std::cout << "pcl callback time checked" << std::endl;
   if (frame_complete && current_frame_segments_.size() > 0u) {
     LOG(INFO) << "Integrating frame " << ++frame_number_ << " with timestamp "
               << std::fixed << last_segment_msg_time_.toSec();
@@ -203,7 +205,9 @@ void Controller::segmentPointcloudCallback(
   }
   last_segment_msg_time_ = segment_pcl_msg->header.stamp;
 
+  std::cout << "processing segment" << std::endl;
   processSegmentPointcloud(segment_pcl_msg);
+  std::cout << "processed segment" << std::endl;
 }
 
 void Controller::processSegmentPointcloud(
@@ -346,6 +350,7 @@ void Controller::integrateFrame() {
 }
 
 void Controller::integrateSemanticClasses() {
+  std::cout << "semantic class integration" << std::endl;
   //save observed rooms
   std::vector<uint> room_ids;
 
@@ -372,20 +377,29 @@ void Controller::integrateSemanticClasses() {
       obj.width = 0; //TODO currently unknown
       obj.height = 0;
       observation_msg_->objects.push_back(obj);
-
+      std::cout << "a" << std::endl;
 
       //get room fpor object by its center point
       auto point = object_volume->getPose().getPosition();
       uint room_id = 0;
 
+      std::cout << "b" << std::endl;
+      std::cout << "controller lock" << std::endl;
       rooms_and_floors_->mut.lock();
+      std::cout << "b1" << std::endl;
       auto floors = rooms_and_floors_->floors;
+      std::cout << "b2" << std::endl;
       for(auto floor : *floors) {
+        std::cout << "d" << std::endl;
         if(floor->inFloor(point[2])) {
+          std::cout << "e" << std::endl;
           room_id = floor->getRoomId(point);
         }
       }
+      std::cout << "b3" << std::endl;
       rooms_and_floors_->mut.unlock();
+      std::cout << "controller unlock" << std::endl;
+      std::cout << "c" << std::endl;
 
       scene_graph_msgs::Relation rel;
       rel.object_ids.push_back(obj.object_id);
@@ -395,8 +409,9 @@ void Controller::integrateSemanticClasses() {
 
       room_ids.push_back(room_id);
     }
+    std::cout << "finished semantic class integration" << std::endl;
   }
-
+  std::cout << "publishing" << std::endl; 
     //now also publish observed rooms
     for(auto room_id : room_ids) {
       if(room_id == 0)
@@ -413,12 +428,7 @@ void Controller::integrateSemanticClasses() {
       rel.type = "room_in_room";
       observation_msg_->relations.push_back(rel);
     }
-    
-    
-    
-  
-
-  
+    std::cout << "finished publishing" << std::endl;
 }
 
 void Controller::trackObjects() {

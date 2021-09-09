@@ -25,6 +25,8 @@ class Floor {
 
     uint checkNeighbours(voxblox::Point point, int neighbourhood_size);
 
+    voxblox::Layer<RoomVoxel>::Ptr getLayer();
+
   protected:
     double floor_height_;
     double floor_weight_;
@@ -38,6 +40,8 @@ class Floor {
     std::shared_ptr<RoomsAndFloors> rooms_and_floors_;
 
     std::mutex floor_mutex_;
+
+    
 
 };
 

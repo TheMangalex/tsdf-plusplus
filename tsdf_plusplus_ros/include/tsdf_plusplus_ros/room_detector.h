@@ -30,7 +30,10 @@ class RoomDetector {
   
   ros::Subscriber pcl_sub_;
   ros::Publisher slice_pub_;
+  ros::Publisher floor_pub_;
   std::shared_ptr<Controller> controller_ptr_;
+
+  bool publish_floor_;
 
   bool first_pos_;
   bool half_step_;
@@ -59,6 +62,8 @@ class RoomDetector {
                                    const std::string& to_frame,
                                    const ros::Time& timestamp,
                                    Transformation* transform);
+
+  void visualizeFloor(Floor::Ptr floor); 
 
 };
 
