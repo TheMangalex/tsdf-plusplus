@@ -1,6 +1,6 @@
 segment_pointcloud_topic: "/rgbd_segmentation_node/segment_pointcloud"
 world_frame: "world"
-sensor_frame: "realsense_d435_back_color_optical_frame"
+sensor_frame: "arm_rgbd_cam_color_optical_frame"
 
 voxel_size: 0.03
 voxels_per_side: 8
