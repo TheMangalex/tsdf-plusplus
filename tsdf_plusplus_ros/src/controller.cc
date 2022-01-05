@@ -371,11 +371,12 @@ void Controller::integrateSemanticClasses() {
 
 
       //fake room relation, TODO this has to be done different later; maybe also add rooms to objects in tsdf++
-      scene_graph_msgs::Relation rel;
+      /*scene_graph_msgs::Relation rel;
       rel.object_ids.push_back(obj.object_id);
       rel.room_ids.push_back(0); //TODO change this later with inclusion of rooms
       rel.type = "object_in_room";
-      observation_msg_->relations.push_back(rel);
+      observation_msg_->relations.push_back(rel);*/
+      //removed due to floor plan
 
     }
     
