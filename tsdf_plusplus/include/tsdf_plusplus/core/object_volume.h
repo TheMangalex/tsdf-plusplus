@@ -5,6 +5,7 @@
 #define TSDF_PLUSPLUS_CORE_OBJECT_VOLUME_H_
 
 #include <mutex>
+#include <algorithm>
 
 #include <voxblox/core/layer.h>
 #include <voxblox/core/voxel.h>
@@ -29,6 +30,10 @@ class ObjectVolume {
   inline Transformation getPose() { return pose_; }
 
   void accumulateTransform(Transformation transform);
+
+  Point getPosition() {
+    return pos_;
+  }
 
   // Thread safe.
   // Returns a pointer to a TSDF block located at block_idx in the TSDF layer.
@@ -57,6 +62,8 @@ class ObjectVolume {
   // G_T_G_O i.e. transformation from object to global frame
   // expressed in global frame.
   Transformation pose_;
+
+  Point pos_;
 };
 
 #endif  // TSDF_PLUSPLUS_CORE_OBJECT_VOLUME_H_

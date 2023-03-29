@@ -11,7 +11,9 @@ int main(int argc, char** argv) {
             << std::endl;
 
   ros::init(argc, argv, "tsdf_plusplus_node");
+
   google::InitGoogleLogging(argv[0]);
+
 
   ros::NodeHandle node_handle;
   ros::NodeHandle node_handle_private("~");

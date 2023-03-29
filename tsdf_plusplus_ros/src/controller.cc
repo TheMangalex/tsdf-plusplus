@@ -43,7 +43,9 @@ Controller::Controller(const ros::NodeHandle& nh,
       world_frame_("world"),
       sensor_frame_(""),
       using_ground_truth_segmentation_(false),
-      object_tracking_enabled_(false) {
+      object_tracking_enabled_(false),
+      export_path_("") {
+
   getConfigFromRosParam(nh_private);
 
   // Subcribe to input pointcloud.
@@ -78,6 +80,7 @@ Controller::Controller(const ros::NodeHandle& nh,
   nh_private_.param("meshing/update_mesh_every_n_sec", update_mesh_every_n_sec,
                     update_mesh_every_n_sec);
 
+  std::cout << "update_mesh_time: " << update_mesh_every_n_sec << std::endl;
   if (update_mesh_every_n_sec > 0.0) {
     update_mesh_timer_ =
         nh_private_.createTimer(ros::Duration(update_mesh_every_n_sec),
@@ -86,6 +89,8 @@ Controller::Controller(const ros::NodeHandle& nh,
 
   bool enable_visualizer = false;
   nh_private_.param("visualizer/enable", enable_visualizer, enable_visualizer);
+
+  std::cout << "enable visualizer: " << enable_visualizer << std::endl;
 
   camera_extrinsics_.reset(new Eigen::Matrix4f());
 
@@ -113,8 +118,8 @@ Controller::Controller(const ros::NodeHandle& nh,
   mesh_pub_ = nh_private_.advertise<voxblox_msgs::Mesh>("mesh", 1, true);
 
   //observations pub
-  std::cout << "new publisher" << std::endl;
   observation_pub_ = nh_private_.advertise<scene_graph_msgs::Observation>("observations", 1, true);
+
 }
 
 Controller::~Controller() { vizualizer_thread_.join(); }
@@ -136,26 +141,32 @@ void Controller::getConfigFromRosParam(const ros::NodeHandle& nh_private) {
   nh_private.param<std::vector<std::string>>(
       "semantic_classes", semantic_classes_, semantic_classes_);
 
+  
+
   // Mesh settings.
   nh_private.param("meshing/publish_mesh", publish_mesh_, publish_mesh_);
+  std::cout << "publish_mesh" << publish_mesh_ << std::endl;
   nh_private.param("meshing/mesh_filename", mesh_filename_, mesh_filename_);
 
-  std::vector<float> camera_intrinsics;
+  std::vector<float> camera_intrinsics(9, 0.0);
   nh_private.param<std::vector<float>>("camera_intrinsics", camera_intrinsics,
                                        camera_intrinsics);
   camera_intrinsics_ = Eigen::Map<Eigen::Matrix<float, 3, 3, Eigen::RowMajor>>(
       camera_intrinsics.data());
   nh_private.param<bool>("visualizer/write_frames_to_file",
                          write_frames_to_file_, write_frames_to_file_);
-
+  
   nh_private.param("visualizer/export_path", export_path_, export_path_);
 
   bool verbose_log = false;
   nh_private.param<bool>("debug/verbose_log", verbose_log, verbose_log);
 
+  
+
   if (verbose_log) {
     FLAGS_stderrthreshold = 0;
   }
+
 }
 
 void Controller::segmentPointcloudCallback(
@@ -166,7 +177,6 @@ void Controller::segmentPointcloudCallback(
     LOG(INFO) << "Integrating frame " << ++frame_number_ << " with timestamp "
               << std::fixed << last_segment_msg_time_.toSec();
 
-    std::cout << "clearing last message" << std::endl;
     //TODO clear last observances here, save them during integration and publish before clearing the frame
     observation_msg_ = std::make_shared<scene_graph_msgs::Observation>();
     observation_msg_->header = segment_pcl_msg->header;
@@ -184,7 +194,6 @@ void Controller::segmentPointcloudCallback(
     rooms.push_back(room);
 
     //TODO observe object relations, currently not done
-    std::cout << "integrating frame" << std::endl;
 
 
     integrateFrame();
@@ -196,7 +205,6 @@ void Controller::segmentPointcloudCallback(
 
 
     //publish observations
-    std::cout << "publish observation" << std::endl;
     observation_pub_.publish(*observation_msg_);
 
     clearFrame();
@@ -204,6 +212,7 @@ void Controller::segmentPointcloudCallback(
   last_segment_msg_time_ = segment_pcl_msg->header.stamp;
 
   processSegmentPointcloud(segment_pcl_msg);
+
 }
 
 void Controller::processSegmentPointcloud(
@@ -339,10 +348,12 @@ void Controller::integrateFrame() {
     // Update the camera parameters of the visualizer to
     // fit its window to the current camera view.
     *camera_extrinsics_ = T_G_C_.getTransformationMatrix();
+    
   }
 
   LOG(INFO) << "Timings: " << std::endl
             << voxblox::timing::Timing::Print() << std::endl;
+
 }
 
 void Controller::integrateSemanticClasses() {
@@ -356,14 +367,19 @@ void Controller::integrateSemanticClasses() {
     if (object_volume) {
       object_volume->setSemanticClass(segment->semantic_class_);
 
-      std::cout << "fitting object into message " << std::endl;
       //TODO save observed objects here
       scene_graph_msgs::Object obj;
       obj.object_id = segment->object_id_;
       obj.semantic_class = segment->semantic_class_;
 
       //Casting because of eigen error
-      tf::poseKindrToMsg(object_volume->getPose().cast<double>(), &obj.pose);
+      //tf::poseKindrToMsg(object_volume->getPose().cast<double>(), &obj.pose);
+      auto point = object_volume->getPosition();
+      obj.pose.orientation.z = 1.0;
+      obj.pose.position.x = point[0];
+      obj.pose.position.y = point[1];
+      obj.pose.position.z = point[2];
+      
       //obj.pose = trans;
       obj.width = 0; //TODO currently unknown
       obj.height = 0;
@@ -383,7 +399,6 @@ void Controller::integrateSemanticClasses() {
     
   }
 
-  
 }
 
 void Controller::trackObjects() {
@@ -499,6 +514,7 @@ void Controller::clearFrame() {
 }
 
 void Controller::updateMeshEvent(const ros::TimerEvent& event) {
+  std::cout << "updating mesh" << std::endl;
   std::lock_guard<std::mutex> mesh_layer_lock(*mesh_layer_mutex_);
   std::lock_guard<std::mutex> map_lock(map_mutex_);
 
@@ -511,14 +527,21 @@ void Controller::updateMeshEvent(const ros::TimerEvent& event) {
 
   tic_toc.tic();
 
+  std::cout << "a" << std::endl; 
+
   *mesh_layer_updated_ = mesh_integrator_->generateMesh(
                              only_mesh_updated_blocks, clear_updated_flag) ||
                          *mesh_layer_updated_;
 
   update_mesh_timer.Stop();
 
+  std::cout << "b" << std::endl;
+
   if (publish_mesh_) {
+    std::cout << "publishing mesh" << std::endl;
     timing::Timer mesh_msg_timer("mesh/publish_msg");
+
+    std::cout << "c" << std::endl;
 
     voxblox_msgs::Mesh mesh_msg;
     generateVoxbloxMeshMsg(mesh_layer_, voxblox::ColorMode::kColor, &mesh_msg);
@@ -527,6 +550,7 @@ void Controller::updateMeshEvent(const ros::TimerEvent& event) {
 
     mesh_msg_timer.Stop();
   }
+  std::cout << "d" << std::endl;
 }
 
 bool Controller::generateMeshCallback(std_srvs::Empty::Request& /*request*/,

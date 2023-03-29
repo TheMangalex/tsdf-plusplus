@@ -1,13 +1,13 @@
 <launch>
-  <arg name="scene_name" default="ma" />
-  <arg name="sensor_name" default="ma" />
+  <arg name="scene_name" default="main" />
+  <arg name="sensor_name" default="main" />
   <arg name="gt_segmentation" default="false" />
   <arg name="visualize" default="true" />
 
-	<node pkg="tsdf_plusplus_ros" type="tsdf_plusplus_node" name="tsdf_plusplus_node" output="screen" launch-prefix="gdb -ex run --args">
-		<rosparam command="load" file="$(find tsdf_plusplus_ros)/config/default_ma.yaml" />
+	<node pkg="tsdf_plusplus_ros" type="tsdf_plusplus_node" name="tsdf_plusplus_node" output="log">
+		<rosparam command="load" file="$(find tsdf_plusplus_ros)/config/default_main.yaml" />
 	  <rosparam command="load" file="$(find tsdf_plusplus_ros)/config/$(arg scene_name).yaml" />
-    <rosparam command="load" file="$(find rgbd_segmentation)/config/$(arg sensor_name).yaml" />
+    <!--rosparam command="load" file="$(find rgbd_segmentation)/config/$(arg sensor_name).yaml" /-->
 
     <!-- Load the human-readable Microsoft COCO 80 object categories. -->
 		<rosparam command="load" file="$(find tsdf_plusplus_ros)/config/coco_classes.yaml" />
@@ -17,7 +17,8 @@
     <param name="using_ground_truth_segmentation" value="true" if="$(arg gt_segmentation)" />
 
     <param name="visualizer/enable" value="$(arg visualize)" />
-    <param name="meshing/update_mesh_every_n_sec" value="0.0" unless="$(arg visualize)" />
+    <!-- This setting disables publishing to the ros topic, when the visualizer is off. bad idea -->
+    <!-- param name="meshing/update_mesh_every_n_sec" value="0.0" unless="$(arg visualize)" /-->
 
   </node>
 </launch>

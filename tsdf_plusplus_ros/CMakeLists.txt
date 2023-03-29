@@ -6,7 +6,7 @@ catkin_simple(ALL_DEPS_REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS system thread filesystem)
 
-set(CMAKE_CXX_FLAGS "-std=c++14")
+set(CMAKE_CXX_FLAGS "-std=c++14" )
 cs_add_library(${PROJECT_NAME}_library
   src/controller.cc
 )
