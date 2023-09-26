@@ -10,7 +10,7 @@
     <!--rosparam command="load" file="$(find rgbd_segmentation)/config/$(arg sensor_name).yaml" /-->
 
     <!-- Load the human-readable Microsoft COCO 80 object categories. -->
-		<rosparam command="load" file="$(find tsdf_plusplus_ros)/config/coco_classes.yaml" />
+		<rosparam command="load" file="$(find tsdf_plusplus_ros)/config/main_classes.yaml" />
 
     <!-- Settings for relying on ground truth 2D segmentation. -->
     <param name="segment_pointcloud_topic" value="/camera/object_segment" if="$(arg gt_segmentation)" />
